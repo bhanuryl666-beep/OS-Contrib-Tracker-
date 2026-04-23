@@ -60,8 +60,7 @@ app.get('/', (req, res) => {
 
 // Catch all handler: serve React app for any non-API routes
 if (process.env.NODE_ENV === 'production') {
-  // ✅ New syntax
-app.get('*splat', (req, res) => {
+  app.get(/(.*)/, (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 }
