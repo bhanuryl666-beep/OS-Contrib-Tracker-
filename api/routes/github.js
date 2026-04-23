@@ -16,6 +16,14 @@ const githubError = (res, err, fallbackMessage) => {
   return res.status(status).json({ message });
 };
 
+// Middleware to check if user has GitHub access token
+const requireGitHubAuth = (req, res, next) => {
+  if (!req.user.accessToken) {
+    return res.status(403).json({ message: 'GitHub account not connected. Please login with GitHub.' });
+  }
+  next();
+};
+
 const formatDateKey = (date) => date.toISOString().slice(0, 10);
 
 const buildEmptyContributionDays = (days) => {
@@ -34,7 +42,7 @@ const buildEmptyContributionDays = (days) => {
 };
 
 // Get user repos
-router.get('/repos', isAuth, async (req, res) => {
+router.get('/repos', isAuth, requireGitHubAuth, async (req, res) => {
   try {
     const response = await axios.get('https://api.github.com/user/repos', {
       headers: githubHeaders(req.user.accessToken),
@@ -47,7 +55,7 @@ router.get('/repos', isAuth, async (req, res) => {
 });
 
 // Get user commits for a repo
-router.get('/commits/:owner/:repo', isAuth, async (req, res) => {
+router.get('/commits/:owner/:repo', isAuth, requireGitHubAuth, async (req, res) => {
   try {
     const { owner, repo } = req.params;
     const response = await axios.get(
@@ -64,7 +72,7 @@ router.get('/commits/:owner/:repo', isAuth, async (req, res) => {
 });
 
 // Get contribution graph data from recent authored commits
-router.get('/contributions', isAuth, async (req, res) => {
+router.get('/contributions', isAuth, requireGitHubAuth, async (req, res) => {
   try {
     const days = Math.min(Number(req.query.days) || 182, 365);
     const contributionDays = buildEmptyContributionDays(days);
@@ -72,29 +80,73 @@ router.get('/contributions', isAuth, async (req, res) => {
     const since = contributionDays[0].date;
     const headers = githubHeaders(req.user.accessToken);
 
-    const response = await axios.get('https://api.github.com/search/commits', {
-      headers,
-      params: {
-        q: `author:${req.user.username} author-date:>=${since}`,
-        per_page: 100,
-        sort: 'author-date',
-        order: 'desc'
+    // Try search commits first, fallback to repo-based approach
+    try {
+      const response = await axios.get('https://api.github.com/search/commits', {
+        headers,
+        params: {
+          q: `author:${req.user.username} committer-date:>=${since}`,
+          per_page: 100,
+          sort: 'committer-date',
+          order: 'desc'
+        }
+      });
+
+      response.data.items.forEach((item) => {
+        const date = item.commit?.committer?.date;
+
+        if (!date) {
+          return;
+        }
+
+        const dateKey = date.slice(0, 10);
+
+        if (contributionMap.has(dateKey)) {
+          contributionMap.set(dateKey, contributionMap.get(dateKey) + 1);
+        }
+      });
+    } catch (searchErr) {
+      console.warn('Search commits failed, trying alternative approach:', searchErr.message);
+
+      // Fallback: Get user's repos and check recent commits
+      try {
+        const reposResponse = await axios.get('https://api.github.com/user/repos', {
+          headers,
+          params: { per_page: 10, sort: 'pushed', direction: 'desc' }
+        });
+
+        for (const repo of reposResponse.data.slice(0, 5)) { // Check first 5 repos
+          try {
+            const commitsResponse = await axios.get(
+              `https://api.github.com/repos/${repo.owner.login}/${repo.name}/commits`,
+              {
+                headers,
+                params: {
+                  author: req.user.username,
+                  since: since + 'T00:00:00Z',
+                  per_page: 20
+                }
+              }
+            );
+
+            commitsResponse.data.forEach((commit) => {
+              const date = commit.commit?.committer?.date;
+              if (!date) return;
+
+              const dateKey = date.slice(0, 10);
+              if (contributionMap.has(dateKey)) {
+                contributionMap.set(dateKey, contributionMap.get(dateKey) + 1);
+              }
+            });
+          } catch (repoErr) {
+            // Continue to next repo
+            console.warn(`Failed to get commits for ${repo.full_name}:`, repoErr.message);
+          }
+        }
+      } catch (reposErr) {
+        console.warn('Failed to get repos for contribution graph:', reposErr.message);
       }
-    });
-
-    response.data.items.forEach((item) => {
-      const date = item.commit?.author?.date;
-
-      if (!date) {
-        return;
-      }
-
-      const dateKey = date.slice(0, 10);
-
-      if (contributionMap.has(dateKey)) {
-        contributionMap.set(dateKey, contributionMap.get(dateKey) + 1);
-      }
-    });
+    }
 
     const daysWithCounts = contributionDays.map((day) => ({
       ...day,
@@ -114,7 +166,7 @@ router.get('/contributions', isAuth, async (req, res) => {
 });
 
 // Get user pull requests
-router.get('/prs', isAuth, async (req, res) => {
+router.get('/prs', isAuth, requireGitHubAuth, async (req, res) => {
   try {
     const response = await axios.get('https://api.github.com/search/issues', {
       headers: githubHeaders(req.user.accessToken),
@@ -132,12 +184,13 @@ router.get('/prs', isAuth, async (req, res) => {
 });
 
 // Get contribution stats
-router.get('/stats', isAuth, async (req, res) => {
+router.get('/stats', isAuth, requireGitHubAuth, async (req, res) => {
   try {
     const headers = githubHeaders(req.user.accessToken);
 
-    const [reposRes, prsRes] = await Promise.all([
+    const [reposRes, userRes, prsRes] = await Promise.all([
       axios.get('https://api.github.com/user/repos', { headers, params: { per_page: 100 } }),
+      axios.get('https://api.github.com/user', { headers }),
       axios.get('https://api.github.com/search/issues', {
         headers,
         params: { q: `type:pr author:${req.user.username}`, per_page: 1 }
@@ -147,7 +200,16 @@ router.get('/stats', isAuth, async (req, res) => {
     res.json({
       totalRepos: reposRes.data.length,
       totalPRs: prsRes.data.total_count,
-      username: req.user.username
+      totalCommits: 0, // Will be calculated from contributions endpoint
+      userProfile: {
+        username: userRes.data.login,
+        name: userRes.data.name,
+        bio: userRes.data.bio,
+        followers: userRes.data.followers,
+        following: userRes.data.following,
+        publicRepos: userRes.data.public_repos,
+        avatar: userRes.data.avatar_url
+      }
     });
   } catch (err) {
     githubError(res, err, 'Failed to fetch stats');

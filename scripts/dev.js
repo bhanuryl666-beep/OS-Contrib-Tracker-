@@ -1,8 +1,8 @@
 const { spawn } = require('node:child_process');
 
 const commands = [
-  { name: 'server', command: 'npm', args: ['run', 'dev', '--prefix', 'server'] },
-  { name: 'client', command: 'npm', args: ['run', 'dev', '--prefix', 'client'] }
+  { name: 'backend', command: 'npm', args: ['run', 'dev', '--prefix', 'backend'] },
+  { name: 'frontend', command: 'npm', args: ['run', 'dev', '--prefix', 'frontend'] }
 ];
 
 const children = commands.map(({ name, command, args }) => {

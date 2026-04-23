@@ -13,6 +13,18 @@ import {
   Star,
   Trash2
 } from 'lucide-react';
+import { Bar } from 'react-chartjs-2';
+import CalendarHeatmap from 'react-calendar-heatmap';
+import 'react-calendar-heatmap/dist/styles.css';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
 import {
   createTrackedContribution,
   deleteTrackedContribution,
@@ -28,6 +40,15 @@ import {
   registerUser,
   updateTrackedContribution
 } from './api';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 const loginUrl = '/api/auth/github';
 const emptyContribution = {
@@ -73,44 +94,143 @@ function calculateCurrentStreak(days = []) {
   return streak;
 }
 
-function ContributionGraph({ graph }) {
+function generateWeeklyData(days = []) {
   const weeks = [];
+  const weekLabels = [];
 
-  for (let index = 0; index < graph.days.length; index += 7) {
-    weeks.push(graph.days.slice(index, index + 7));
+  for (let i = 0; i < days.length; i += 7) {
+    const week = days.slice(i, i + 7);
+    const weekTotal = week.reduce((sum, day) => sum + day.count, 0);
+    weeks.push(weekTotal);
+
+    // Label as "Week X" or date range
+    const startDate = new Date(week[0]?.date);
+    const endDate = new Date(week[week.length - 1]?.date);
+    const label = `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
+    weekLabels.push(label);
   }
+
+  return { weeks, weekLabels };
+}
+
+function WeeklyChart({ graph }) {
+  if (!graph || !graph.days || graph.days.length === 0) {
+    return (
+      <section className="content-card chart-card">
+        <div className="section-heading">
+          <h2>Weekly Commits Chart</h2>
+          <CalendarDays size={22} />
+        </div>
+        <p className="empty-state">No contribution data available for chart.</p>
+      </section>
+    );
+  }
+
+  const { weeks, weekLabels } = generateWeeklyData(graph.days);
+
+  const data = {
+    labels: weekLabels,
+    datasets: [
+      {
+        label: 'Commits per Week',
+        data: weeks,
+        backgroundColor: 'rgba(255, 122, 69, 0.6)',
+        borderColor: 'rgba(255, 122, 69, 1)',
+        borderWidth: 1,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+      title: {
+        display: true,
+        text: 'Weekly Commit Activity',
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          stepSize: 1,
+        },
+      },
+    },
+  };
+
+  return (
+    <section className="content-card chart-card">
+      <div className="section-heading">
+        <h2>Weekly Commits Chart</h2>
+        <CalendarDays size={22} />
+      </div>
+      <Bar data={data} options={options} />
+    </section>
+  );
+}
+
+function ContributionGraph({ graph }) {
+  if (!graph || !graph.days || graph.days.length === 0) {
+    return (
+      <section className="content-card contribution-card">
+        <div className="section-heading">
+          <div>
+            <h2>Contribution Graph</h2>
+            <p>No contribution data available.</p>
+          </div>
+          <CalendarDays size={22} />
+        </div>
+        <p className="empty-state">Connect GitHub to view your contribution graph.</p>
+      </section>
+    );
+  }
+
+  const today = new Date();
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - graph.days.length + 1);
+
+  const values = graph.days.map(day => ({
+    date: day.date,
+    count: day.count
+  }));
 
   return (
     <section className="content-card contribution-card">
       <div className="section-heading">
         <div>
-          <h2>Contribution graph</h2>
+          <h2>Contribution Graph</h2>
           <p>{graph.total} commits tracked across the last {graph.days.length} days.</p>
         </div>
         <CalendarDays size={22} />
       </div>
 
-      <div className="graph-scroll" aria-label="Contribution graph">
-        <div className="contribution-graph">
-          {weeks.map((week, weekIndex) => (
-            <div className="graph-week" key={`${week[0]?.date || 'week'}-${weekIndex}`}>
-              {week.map((day) => (
-                <span
-                  className={`graph-day level-${contributionLevel(day.count, graph.maxCount)}`}
-                  key={day.date}
-                  title={`${day.count} commits on ${day.date}`}
-                  aria-label={`${day.count} commits on ${day.date}`}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
+      <div className="heatmap-container">
+        <CalendarHeatmap
+          startDate={startDate}
+          endDate={today}
+          values={values}
+          classForValue={(value) => {
+            if (!value || value.count === 0) {
+              return 'color-empty';
+            }
+            return `color-scale-${Math.min(4, Math.ceil((value.count / graph.maxCount) * 4))}`;
+          }}
+          tooltipDataAttrs={(value) => ({
+            'data-tip': value ? `${value.count} commits on ${value.date}` : 'No contributions'
+          })}
+          showWeekdayLabels={true}
+          showMonthLabels={true}
+        />
       </div>
 
       <div className="graph-legend" aria-hidden="true">
         <span>Less</span>
         {[0, 1, 2, 3, 4].map((level) => (
-          <i className={`graph-day level-${level}`} key={level} />
+          <i className={`color-scale-${level}`} key={level} />
         ))}
         <span>More</span>
       </div>
@@ -232,6 +352,7 @@ function ProtectedRoute({ user, loading, children }) {
 
 function Dashboard({ user, onLogout, onSwitchAccount }) {
   const [stats, setStats] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [repos, setRepos] = useState([]);
   const [pullRequests, setPullRequests] = useState([]);
   const [contributionGraph, setContributionGraph] = useState(null);
@@ -258,15 +379,44 @@ function Dashboard({ user, onLogout, onSwitchAccount }) {
       try {
         const [trackedData, statsResult, reposResult, prsResult, graphResult] = await Promise.all([
           getTrackedContributions(),
-          getStats().catch(() => null),
-          getRepos().catch(() => []),
-          getPullRequests().catch(() => ({ items: [] })),
-          getContributionGraph().catch(() => null)
+          getStats().catch((err) => {
+            console.error('Failed to fetch stats:', err);
+            if (err.response?.status === 403) {
+              setError('GitHub account not connected. Please connect your GitHub account to view statistics.');
+            }
+            return null;
+          }),
+          getRepos().catch((err) => {
+            console.error('Failed to fetch repos:', err);
+            if (err.response?.status === 403) {
+              return [];
+            }
+            return [];
+          }),
+          getPullRequests().catch((err) => {
+            console.error('Failed to fetch PRs:', err);
+            if (err.response?.status === 403) {
+              return { items: [] };
+            }
+            return { items: [] };
+          }),
+          getContributionGraph().catch((err) => {
+            console.error('Failed to fetch contribution graph:', err);
+            if (err.response?.status === 403) {
+              return null;
+            }
+            return null;
+          })
         ]);
 
         if (!ignore) {
           setTracked(trackedData);
-          setStats(statsResult);
+          const statsWithCommits = statsResult ? {
+            ...statsResult,
+            totalCommits: graphResult?.total || 0
+          } : null;
+          setStats(statsWithCommits);
+          setUserProfile(statsResult?.userProfile || null);
           setRepos(reposResult.slice(0, 8));
           setPullRequests(prsResult.items?.slice(0, 6) || []);
           setContributionGraph(graphResult);
@@ -343,6 +493,11 @@ function Dashboard({ user, onLogout, onSwitchAccount }) {
           <div>
             <span>Welcome back</span>
             <strong>{user.displayName || user.username}</strong>
+            {userProfile ? (
+              <small style={{ color: 'var(--green)' }}>✓ GitHub Connected</small>
+            ) : (
+              <small style={{ color: 'var(--accent)' }}>⚠ GitHub Not Connected</small>
+            )}
           </div>
         </div>
         <div className="topbar-actions">
@@ -367,14 +522,14 @@ function Dashboard({ user, onLogout, onSwitchAccount }) {
               type="button"
               onClick={() => setActiveView('analyze')}
             >
-              Analyze
+              Fetch GitHub Data
             </button>
             <button
               className={`view-action ${activeView === 'track' ? 'active' : ''}`}
               type="button"
               onClick={() => setActiveView('track')}
             >
-              Track Contributions
+              Manual Tracking
             </button>
           </div>
         </div>
@@ -391,16 +546,56 @@ function Dashboard({ user, onLogout, onSwitchAccount }) {
 
       {status === 'ready' && (
         <>
+          {!userProfile && (
+            <section className="user-profile-section">
+              <article className="content-card">
+                <div className="section-heading">
+                  <h2>GitHub Connection Required</h2>
+                </div>
+                <p className="empty-state error">
+                  To view your GitHub statistics and contribution graph, please connect your GitHub account.
+                  Go to your profile settings or re-login with GitHub.
+                </p>
+                <button className="primary-action" onClick={onSwitchAccount}>
+                  Connect GitHub Account
+                </button>
+              </article>
+            </section>
+          )}
+
+          {userProfile && (
+            <section className="user-profile-section">
+              <article className="content-card user-profile-card">
+                <div className="profile-header">
+                  <img src={userProfile.avatar} alt={userProfile.username} className="profile-avatar" />
+                  <div className="profile-info">
+                    <h2>{userProfile.name || userProfile.username}</h2>
+                    <p className="profile-username">@{userProfile.username}</p>
+                    {userProfile.bio && <p className="profile-bio">{userProfile.bio}</p>}
+                    <div className="profile-stats">
+                      <span><strong>{userProfile.followers}</strong> followers</span>
+                      <span><strong>{userProfile.following}</strong> following</span>
+                      <span><strong>{userProfile.publicRepos}</strong> repositories</span>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </section>
+          )}
+
           {activeView === 'analyze' && (
             <section className="view-panel" aria-label="Analyze contribution activity">
               <section className="stats-grid">
-                <StatCard label="Repositories" value={stats?.totalRepos ?? repos.length} icon={GitFork} />
-                <StatCard label="Pull Requests" value={stats?.totalPRs ?? 0} icon={GitPullRequest} />
-                <StatCard label="Graph Commits" value={contributionGraph?.total ?? 0} icon={GitCommitHorizontal} />
-                <StatCard label="Current Streak" value={`${currentStreak} days`} icon={Flame} />
+                <StatCard label="Repositories" value={stats ? stats.totalRepos : '...'} icon={GitFork} />
+                <StatCard label="Pull Requests" value={stats ? stats.totalPRs : '...'} icon={GitPullRequest} />
+                <StatCard label="Total Commits" value={stats ? stats.totalCommits : '...'} icon={GitCommitHorizontal} />
+                <StatCard label="Current Streak" value={contributionGraph ? `${currentStreak} days` : '...'} icon={Flame} />
               </section>
               {contributionGraph ? (
-                <ContributionGraph graph={contributionGraph} />
+                <>
+                  <ContributionGraph graph={contributionGraph} />
+                  <WeeklyChart graph={contributionGraph} />
+                </>
               ) : (
                 <p className="status-card">Connect GitHub to analyze live contribution graph data.</p>
               )}
@@ -462,11 +657,11 @@ function Dashboard({ user, onLogout, onSwitchAccount }) {
                   </form>
                   <div className="commit-list">
                     {tracked.map((item) => (
-                      <div className="commit-row" key={item._id}>
+                      <div className={`commit-row status-${item.status}`} key={item._id}>
                         <GitCommitHorizontal size={18} />
                         <div>
                           <strong>{item.title}</strong>
-                          <p>{item.repository} · {item.type} · {item.status}</p>
+                          <p>{item.repository} · {item.type} · <span className={`status-badge status-${item.status}`}>{item.status}</span></p>
                         </div>
                         <button className="mini-button" type="button" onClick={() => handleEditContribution(item)}>
                           Edit
@@ -495,7 +690,7 @@ function Dashboard({ user, onLogout, onSwitchAccount }) {
                       >
                         <div>
                           <strong>{repo.full_name}</strong>
-                          <p>{repo.description || 'No description provided.'}</p>
+                          <p>{repo.description || 'No description available'}</p>
                         </div>
                         <div className="repo-actions">
                           <span>
@@ -514,7 +709,7 @@ function Dashboard({ user, onLogout, onSwitchAccount }) {
                         </div>
                       </button>
                     ))}
-                    {repos.length === 0 && <p className="empty-state">Connect GitHub to load repositories.</p>}
+                    {repos.length === 0 && <p className="empty-state">No repositories found. Connect GitHub to load your repositories.</p>}
                   </div>
                 </article>
               </section>

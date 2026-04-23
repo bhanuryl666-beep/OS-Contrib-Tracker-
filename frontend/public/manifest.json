@@ -1,0 +1,21 @@
+{
+  "name": "OS Contribution Tracker",
+  "short_name": "ContribTracker",
+  "description": "Modern GitHub contribution analytics and tracking platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

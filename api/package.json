@@ -1,14 +1,19 @@
 {
-  "name": "server",
+  "name": "backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "Backend API for OS Contribution Tracker",
   "main": "index.js",
-"scripts": {
-  "start": "node index.js",
-  "dev": "nodemon index.js",
-  "test": "echo \"Error: no test specified\" && exit 1"
-},
-  "keywords": [],
+  "scripts": {
+    "start": "NODE_ENV=production node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "api",
+    "express",
+    "mongodb",
+    "github"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",

@@ -4,6 +4,7 @@ const cors = require('cors');
 const session = require('express-session');
 const passport = require('passport');
 const dotenv = require('dotenv');
+const path = require('path');
 
 dotenv.config();
 
@@ -44,6 +45,11 @@ app.use(passport.session());
 
 require('./config/passport')(passport);
 
+// Serve static files from React build in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../frontend/dist')));
+}
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/github', require('./routes/github'));
 app.use('/api/contributions', require('./routes/contributions'));
@@ -51,6 +57,13 @@ app.use('/api/contributions', require('./routes/contributions'));
 app.get('/', (req, res) => {
   res.json({ message: 'OS Contrib Tracker API running!' });
 });
+
+// Catch all handler: serve React app for any non-API routes
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+  });
+}
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -65,14 +78,20 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Internal server error' });
 });
 
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log('MongoDB connected');
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+// For Vercel deployment
+if (process.env.VERCEL) {
+  module.exports = app;
+} else {
+  // For local development
+  mongoose.connect(process.env.MONGO_URI)
+    .then(() => {
+      console.log('MongoDB connected');
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    })
+    .catch((err) => {
+      console.error('MongoDB error:', err);
+      process.exit(1);
     });
-  })
-  .catch((err) => {
-    console.error('MongoDB error:', err);
-    process.exit(1);
-  });
+}

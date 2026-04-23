@@ -1,0 +1,13 @@
+# Modern ICO Favicon Placeholder
+# Replace this file with a multi-size ICO file (16x16, 32x32, 48x48)
+#
+# Design: Blue gradient background with white chart bars and dot accent
+# Tools to create ICO:
+# 1. https://favicon.io/favicon-generator/ (upload the SVG)
+# 2. https://www.favicon.cc/ (create from scratch)
+# 3. Convert PNG to ICO online at: https://favicon.io/favicon-converter/
+#
+# The SVG version above shows the modern design with:
+# - Blue gradient background (#3b82f6 to #1d4ed8)
+# - White chart bars representing contribution data
+# - Small white dot (GitHub-inspired accent)

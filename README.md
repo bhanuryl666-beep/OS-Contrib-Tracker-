@@ -4,14 +4,32 @@ The Open Source Contribution Tracker is a web-based MERN stack platform that hel
 
 Users can register and login with JWT authentication, then create, read, update, and delete manually tracked contributions. They can also connect GitHub with OAuth to fetch repositories, commits, pull requests, and contribution statistics.
 
+## Project Structure
+
+```
+os-contrib-tracker/
+├── backend/                 # Express.js API server
+│   ├── config/             # Passport OAuth config
+│   ├── controllers/        # Route controllers
+│   ├── middleware/         # Authentication middleware
+│   ├── models/             # MongoDB models
+│   ├── routes/             # API routes
+│   └── index.js            # Server entry point
+├── frontend/                # React client application
+│   ├── public/             # Static assets & favicons
+│   ├── src/                # React components & logic
+│   └── index.html          # HTML template
+├── scripts/                 # Development scripts
+└── package.json            # Root package configuration
+```
+
 ## Tech Stack
 
-- MongoDB with Mongoose
-- Express and Node.js API
-- React client built with Vite
-- JWT authentication with bcrypt password hashing
-- GitHub OAuth with Passport
-- React Router DOM for Login, Register, and Dashboard pages
+- **Backend**: MongoDB with Mongoose, Express and Node.js API
+- **Frontend**: React client built with Vite
+- **Authentication**: JWT with bcrypt, GitHub OAuth with Passport
+- **Routing**: React Router DOM
+- **Icons**: Lucide React, custom favicon system
 
 ## Features
 
@@ -35,10 +53,10 @@ Install dependencies for both apps:
 npm run install:all
 ```
 
-Create the server environment file:
+Create the backend environment file:
 
 ```bash
-cp server/.env.example server/.env
+cp backend/.env.example backend/.env
 ```
 
 Create a GitHub OAuth app and set the callback URL to:
@@ -47,7 +65,7 @@ Create a GitHub OAuth app and set the callback URL to:
 http://localhost:5050/api/auth/github/callback
 ```
 
-Required environment variables are listed in [server/.env.example](server/.env.example).
+Required environment variables are listed in [backend/.env.example](backend/.env.example).
 
 ## Useful Commands
 
